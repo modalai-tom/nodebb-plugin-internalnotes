@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Accepted answer resolves the assignment.** When a reply is marked as the accepted answer in `nodebb-plugin-question-and-answer` (`action:topic.toggleSolved`), an open assignment on that topic is set to `resolved`. One-directional: un-solving or resolving never touches the other side.
+- **Accepted answer resolves the assignment.** When a reply is marked as the accepted answer in `nodebb-plugin-question-and-answer` (`action:topic.toggleSolved`), an open assignment on that topic is set to `resolved`.
+- **Resolving marks the question solved.** `PUT /api/v3/plugins/internalnotes/:tid/status` with `resolved` on an unsolved Q&A question accepts the latest staff reply (admin, global or category moderator, not the asker) as the answer, or marks the question solved with no accepted answer when there is no staff reply. Goes through the Q&A plugin's own socket handlers; the response carries `solved: { pid, uid, username } | null`. Un-solving or reopening never crosses over.
 
 ## [1.1.1] - 2026-05-28
 

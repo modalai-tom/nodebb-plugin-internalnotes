@@ -35,7 +35,8 @@ Then activate the plugin from the **Admin Control Panel > Extend > Plugins**.
 
 Navigate to **ACP > Plugins > Internal Notes & Assignments** to configure:
 
-- **Accepted answer resolves the assignment** — Marking a reply as the accepted answer (Q&A plugin) also sets an open assignment on that topic to resolved. No setting; one-directional. (ModalAI fork)
+- **Accepted answer resolves the assignment** — Marking a reply as the accepted answer (Q&A plugin) also sets an open assignment on that topic to resolved. No setting. (ModalAI fork)
+- **Resolving marks the question solved** — Resolving an assignment (any UI; all go through the status route) on an unsolved Q&A question accepts the latest staff reply as the answer, or marks it solved with no answer when no staff has replied. Un-solving or reopening never crosses over. (ModalAI fork)
 - **Default assignee per category** — One rule per line, `<cid>:<username or uid>`. Every topic posted in (or moved into) that category is auto-assigned to that user, with the normal assignment notification; already-assigned topics are left alone. (ModalAI fork)
 - **Allow global moderators** — Enable to let global moderators view and manage internal notes and assignments (default: off; only admins have access).
 - **Allow category moderators** — Enable to let category moderators view and manage internal notes in their categories (default: off).

@@ -8,6 +8,7 @@ const notifications = require.main.require('./src/notifications');
 const routeHelpers = require.main.require('./src/routes/helpers');
 const controllerHelpers = require.main.require('./src/controllers/helpers');
 const topics = require.main.require('./src/topics');
+const posts = require.main.require('./src/posts');
 const privileges = require.main.require('./src/privileges');
 const pagination = require.main.require('./src/pagination');
 const helpers = require.main.require('./src/controllers/helpers');
@@ -72,7 +73,8 @@ plugin.addRoutes = async ({ router, middleware, helpers }) => {
 		const { status } = req.body;
 		try {
 			const saved = await setAssignmentStatus(req.params.tid, status);
-			helpers.formatApiResponse(200, res, { status: saved });
+			const solved = saved === 'resolved' ? await plugin.solveOnResolved(req.params.tid, req.uid) : null;
+			helpers.formatApiResponse(200, res, { status: saved, solved });
 		} catch (err) {
 			helpers.formatApiResponse(400, res, err);
 		}
@@ -578,11 +580,10 @@ async function setAssignmentStatus(tid, status) {
 }
 
 /**
- * Q&A bridge: when a reply is marked as the accepted answer
+ * Q&A bridge, solved -> resolved: when a reply is marked as the accepted answer
  * (nodebb-plugin-question-and-answer fires action:topic.toggleSolved), close
- * the internal assignment too. One-directional on purpose: un-solving a topic
- * or resolving an assignment never touches the other side, because an accepted
- * answer is a public statement while the assignment is internal bookkeeping.
+ * the internal assignment too. The other direction is solveOnResolved below.
+ * Un-solving a topic or reopening an assignment never touches the other side.
  */
 plugin.resolveOnSolved = async ({ tid, isSolved }) => {
 	if (!isSolved || !tid) {
@@ -597,6 +598,81 @@ plugin.resolveOnSolved = async ({ tid, isSolved }) => {
 	} catch (err) {
 		const winston = require.main.require('winston');
 		winston.error(`[internalnotes] resolveOnSolved failed for tid ${tid}: ${err.stack}`);
+	}
+};
+
+/**
+ * Q&A bridge, resolved -> solved: resolving an assignment on an unsolved
+ * question marks the question solved, accepting the latest staff reply
+ * (administrator, global or category moderator, not the asker) as the answer
+ * when there is one. Every UI that resolves (notes panel, /assigned, a themed
+ * button) goes through the status route, so this is the single place the
+ * public Solved state follows the ticket. Uses the Q&A plugin's own socket
+ * handlers, so privileges, the timeline event, rewards and the toggleSolved
+ * hook behave exactly as a moderator clicking "Mark as accepted answer".
+ *
+ * Returns null when nothing was done (Q&A plugin absent, not a question,
+ * already solved, or the solve failed), else { pid, uid, username } with
+ * pid 0 when the question was marked solved without an accepted answer.
+ */
+async function getAnswerCandidate(tid) {
+	const topicData = await topics.getTopicFields(tid, ['tid', 'cid', 'uid', 'isQuestion', 'isSolved']);
+	if (!topicData || !topicData.tid || parseInt(topicData.isQuestion, 10) !== 1 || parseInt(topicData.isSolved, 10) === 1) {
+		return { applicable: false, post: null };
+	}
+	const pids = await db.getSortedSetRange(`tid:${tid}:posts`, 0, -1);
+	if (!pids.length) {
+		return { applicable: true, post: null };
+	}
+	const postData = (await posts.getPostsFields(pids, ['pid', 'uid', 'timestamp', 'deleted']))
+		.filter(p => p && p.pid && !parseInt(p.deleted, 10) && parseInt(p.uid, 10) !== parseInt(topicData.uid, 10));
+	if (!postData.length) {
+		return { applicable: true, post: null };
+	}
+	const uids = postData.map(p => p.uid);
+	const [adminOrGlobalMod, catMod] = await Promise.all([
+		user.isAdminOrGlobalMod(uids),
+		user.isModerator(uids, topicData.cid),
+	]);
+	let best = null;
+	postData.forEach((p, i) => {
+		if (!(adminOrGlobalMod[i] || catMod[i])) {
+			return;
+		}
+		if (!best || p.timestamp > best.timestamp) {
+			best = p;
+		}
+	});
+	if (!best) {
+		return { applicable: true, post: null };
+	}
+	const username = await user.getUserField(best.uid, 'username');
+	return { applicable: true, post: { pid: best.pid, uid: best.uid, username } };
+}
+
+plugin.solveOnResolved = async (tid, uid) => {
+	try {
+		const SocketPlugins = require.main.require('./src/socket.io/plugins');
+		const QandA = SocketPlugins && SocketPlugins.QandA;
+		if (!QandA || typeof QandA.markPostAsAnswer !== 'function' || typeof QandA.toggleSolved !== 'function') {
+			return null;
+		}
+		const { applicable, post } = await getAnswerCandidate(tid);
+		if (!applicable) {
+			return null;
+		}
+		if (post) {
+			await QandA.markPostAsAnswer({ uid }, { tid: parseInt(tid, 10), pid: post.pid });
+			return post;
+		}
+		// Unsolved question with no staff reply: toggleSolved flips it to solved
+		// (we just checked it is unsolved) with no accepted answer.
+		await QandA.toggleSolved({ uid }, { tid: parseInt(tid, 10) });
+		return { pid: 0, uid: 0, username: null };
+	} catch (err) {
+		const winston = require.main.require('winston');
+		winston.error(`[internalnotes] solveOnResolved failed for tid ${tid}: ${err.stack}`);
+		return null;
 	}
 };
 
@@ -800,5 +876,6 @@ plugin.assignToUser = assignToUser;
 plugin.assignTopic = assignTopic;
 plugin.unassignTopic = unassignTopic;
 plugin.parseAutoAssignRules = parseAutoAssignRules;
+plugin.getAnswerCandidate = getAnswerCandidate;
 
 module.exports = plugin;
