@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] (ModalAI fork)
+
+### Added
+
+- **Accepted answer resolves the assignment.** When a reply is marked as the accepted answer in `nodebb-plugin-question-and-answer` (`action:topic.toggleSolved`), an open assignment on that topic is set to `resolved`. One-directional: un-solving or resolving never touches the other side.
+
 ## [1.1.1] - 2026-05-28
 
 ### Fixed

@@ -577,6 +577,29 @@ async function setAssignmentStatus(tid, status) {
 	return status;
 }
 
+/**
+ * Q&A bridge: when a reply is marked as the accepted answer
+ * (nodebb-plugin-question-and-answer fires action:topic.toggleSolved), close
+ * the internal assignment too. One-directional on purpose: un-solving a topic
+ * or resolving an assignment never touches the other side, because an accepted
+ * answer is a public statement while the assignment is internal bookkeeping.
+ */
+plugin.resolveOnSolved = async ({ tid, isSolved }) => {
+	if (!isSolved || !tid) {
+		return;
+	}
+	try {
+		const topicData = await db.getObjectFields(`topic:${tid}`, ['assignee', 'assigneeStatus']);
+		if (!topicData || !topicData.assignee || topicData.assigneeStatus === 'resolved') {
+			return;
+		}
+		await db.setObjectField(`topic:${tid}`, 'assigneeStatus', 'resolved');
+	} catch (err) {
+		const winston = require.main.require('winston');
+		winston.error(`[internalnotes] resolveOnSolved failed for tid ${tid}: ${err.stack}`);
+	}
+};
+
 async function getAssignee(tid) {
 	const topicData = await db.getObjectFields(`topic:${tid}`, ['assignee', 'assigneeType', 'assigneeStatus']);
 	if (!topicData || !topicData.assignee) {
