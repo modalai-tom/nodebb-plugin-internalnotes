@@ -45,6 +45,16 @@
 				<label class="form-label" for="staleReminderDays">Days without activity before an assigned topic counts as stale</label>
 				<input type="number" class="form-control" id="staleReminderDays" name="staleReminderDays" min="1" placeholder="7" />
 			</div>
+			<hr/>
+			<div class="mb-3">
+				<label class="form-label" for="autoAssign">Default assignee per category</label>
+				<textarea class="form-control" id="autoAssign" name="autoAssign" rows="4" placeholder="39:157"></textarea>
+				<p class="form-text">
+					One rule per line: <code>&lt;category id&gt;:&lt;username or uid&gt;</code>. Every new topic posted in
+					(or moved into) that category is assigned to that user, who gets the normal assignment notification.
+					Topics that are already assigned are left alone.
+				</p>
+			</div>
 		</div>
 	</div>
 	<hr/>

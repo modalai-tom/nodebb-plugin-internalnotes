@@ -42,6 +42,14 @@
         {
             "hook": "filter:user.notificationTypes",
             "method": "registerNotificationType"
+        },
+        {
+            "hook": "action:topic.post",
+            "method": "autoAssignOnPost"
+        },
+        {
+            "hook": "action:topic.move",
+            "method": "autoAssignOnMove"
         }
     ],
     "scss": [

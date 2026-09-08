@@ -475,7 +475,7 @@ async function removeTidFromAssigneeSet(tid) {
 	}
 }
 
-async function assignToUser(tid, assigneeUid, callerUid) {
+async function assignToUser(tid, assigneeUid, callerUid, opts = {}) {
 	const parsedUid = parseInt(assigneeUid, 10);
 	if (parsedUid <= 0) {
 		await unassignTopic(tid);
@@ -500,7 +500,7 @@ async function assignToUser(tid, assigneeUid, callerUid) {
 		// Non-fatal: assignment already saved
 	}
 
-	if (parsedUid !== parseInt(callerUid, 10)) {
+	if (opts.notify !== false && parsedUid !== parseInt(callerUid, 10)) {
 		const topicData = await topics.getTopicFields(tid, ['title', 'slug']);
 		const notifObj = await notifications.create({
 			type: 'topic-assign',
@@ -696,5 +696,86 @@ async function sendStaleReminders() {
 		}
 	}
 }
+
+// --- Per-category default assignee ---
+
+/**
+ * Parse the ACP "autoAssign" setting into { cid: 'uid or username' }.
+ * One rule per line (or comma-separated): "<cid>:<uid>" or "<cid>:<username>".
+ */
+function parseAutoAssignRules(settings) {
+	const rules = {};
+	String((settings && settings.autoAssign) || '')
+		.split(/[\n,]+/)
+		.map(line => line.trim())
+		.filter(Boolean)
+		.forEach((line) => {
+			const m = line.match(/^(\d+)\s*[:=]\s*(.+)$/);
+			if (m) {
+				rules[m[1]] = m[2].trim();
+			}
+		});
+	return rules;
+}
+
+async function resolveAssigneeUid(value) {
+	if (/^\d+$/.test(value)) {
+		return parseInt(value, 10);
+	}
+	const uid = await user.getUidByUsername(value);
+	return parseInt(uid, 10) || 0;
+}
+
+/**
+ * If the topic's category has a default assignee and the topic is not already
+ * assigned, assign it. Existing assignments (manual or previous auto) are left
+ * alone so a reassignment or a resolved status is never clobbered by a move.
+ * Called from action hooks, so it must never throw.
+ */
+async function autoAssign(tid, cid, callerUid) {
+	try {
+		const settings = await meta.settings.get('internalnotes');
+		const rules = parseAutoAssignRules(settings);
+		const target = rules[String(cid)];
+		if (!target) {
+			return;
+		}
+		const assigneeUid = await resolveAssigneeUid(target);
+		if (!assigneeUid) {
+			const winston = require.main.require('winston');
+			winston.warn(`[internalnotes] autoAssign: no user for "${target}" (cid ${cid})`);
+			return;
+		}
+		const current = await db.getObjectField(`topic:${tid}`, 'assignee');
+		if (current) {
+			return;
+		}
+		await assignToUser(tid, assigneeUid, callerUid || 0);
+	} catch (err) {
+		const winston = require.main.require('winston');
+		winston.error(`[internalnotes] autoAssign failed for tid ${tid}: ${err.stack}`);
+	}
+}
+
+// action:topic.post → { topic, post, data }
+plugin.autoAssignOnPost = async ({ topic }) => {
+	if (topic && topic.tid) {
+		await autoAssign(topic.tid, topic.cid, topic.uid);
+	}
+};
+
+// action:topic.move → { tid, fromCid, toCid, uid }
+plugin.autoAssignOnMove = async ({ tid, toCid, uid }) => {
+	if (tid) {
+		await autoAssign(tid, toCid, uid);
+	}
+};
+
+// Exposed for one-shot scripts (e.g. backfilling a category); pass
+// { notify: false } to assign without sending the assignment notification.
+plugin.assignToUser = assignToUser;
+plugin.assignTopic = assignTopic;
+plugin.unassignTopic = unassignTopic;
+plugin.parseAutoAssignRules = parseAutoAssignRules;
 
 module.exports = plugin;
