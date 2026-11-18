@@ -877,5 +877,13 @@ plugin.assignTopic = assignTopic;
 plugin.unassignTopic = unassignTopic;
 plugin.parseAutoAssignRules = parseAutoAssignRules;
 plugin.getAnswerCandidate = getAnswerCandidate;
+// Used by nodebb-plugin-modalai-mcp (ModalAI's staff-only MCP endpoint) so
+// notes, assignment status and the Q&A bridge behave exactly as in the UI.
+plugin.canViewNotes = canViewNotes;
+plugin.getNotes = getNotes;
+plugin.createNote = createNote;
+plugin.getAssignee = getAssignee;
+plugin.getAssignedTids = getAssignedTids;
+plugin.setAssignmentStatus = setAssignmentStatus;
 
 module.exports = plugin;
